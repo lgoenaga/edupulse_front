@@ -68,6 +68,19 @@ const academicSections: Array<{
 const defaultAcademicSection: AcademicSectionKey = 'niveles'
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 
+type PaginationControlsProps = {
+  itemCount: number
+  totalElements: number
+  page: number
+  pageSize: number
+  totalPages: number
+  isLoading: boolean
+  itemLabel: string
+  pageSizeAriaLabel: string
+  onPageChange: (page: number) => void
+  onPageSizeChange: (size: number) => void
+}
+
 const isAcademicSectionKey = (value: string | undefined): value is AcademicSectionKey =>
   academicSections.some((section) => section.key === value)
 
@@ -75,26 +88,26 @@ const getAcademicSectionSummary = (
   section: AcademicSectionKey,
   values: {
     levels: AcademicLevel[]
-    groups: AcademicGroup[]
-    techniques: Technique[]
+    groupsCount: number
+    techniquesCount: number
     loadsCount: number
-    subjects: AcademicSubject[]
-    periods: AcademicPeriod[]
+    subjectsCount: number
+    periodsCount: number
   },
 ) => {
   switch (section) {
     case 'niveles':
       return { count: values.levels.length, label: 'niveles registrados' }
     case 'grupos':
-      return { count: values.groups.length, label: 'grupos registrados' }
+      return { count: values.groupsCount, label: 'grupos registrados' }
     case 'tecnicas':
-      return { count: values.techniques.length, label: 'tecnicas registradas' }
+      return { count: values.techniquesCount, label: 'tecnicas registradas' }
     case 'carga-academica':
       return { count: values.loadsCount, label: 'cargas academicas registradas' }
     case 'materias':
-      return { count: values.subjects.length, label: 'materias registradas' }
+      return { count: values.subjectsCount, label: 'materias registradas' }
     case 'periodos':
-      return { count: values.periods.length, label: 'periodos registrados' }
+      return { count: values.periodsCount, label: 'periodos registrados' }
   }
 }
 
@@ -106,14 +119,35 @@ export function CatalogPage() {
   const [loadPageSize, setLoadPageSize] = useState<number>(20)
   const [loadTotalElements, setLoadTotalElements] = useState(0)
   const [loadTotalPages, setLoadTotalPages] = useState(0)
-  const [metadata, setMetadata] = useState<CatalogMetadata | null>(null)
   const [groups, setGroups] = useState<AcademicGroup[]>([])
-  const [levels, setLevels] = useState<AcademicLevel[]>([])
+  const [groupPage, setGroupPage] = useState(0)
+  const [groupPageSize, setGroupPageSize] = useState<number>(20)
+  const [groupTotalElements, setGroupTotalElements] = useState(0)
+  const [groupTotalPages, setGroupTotalPages] = useState(0)
   const [periods, setPeriods] = useState<AcademicPeriod[]>([])
-  const [subjects, setSubjects] = useState<AcademicSubject[]>([])
+  const [periodPage, setPeriodPage] = useState(0)
+  const [periodPageSize, setPeriodPageSize] = useState<number>(20)
+  const [periodTotalElements, setPeriodTotalElements] = useState(0)
+  const [periodTotalPages, setPeriodTotalPages] = useState(0)
+  const [subjectRows, setSubjectRows] = useState<AcademicSubject[]>([])
+  const [subjectPage, setSubjectPage] = useState(0)
+  const [subjectPageSize, setSubjectPageSize] = useState<number>(20)
+  const [subjectTotalElements, setSubjectTotalElements] = useState(0)
+  const [subjectTotalPages, setSubjectTotalPages] = useState(0)
   const [techniques, setTechniques] = useState<Technique[]>([])
+  const [techniquePage, setTechniquePage] = useState(0)
+  const [techniquePageSize, setTechniquePageSize] = useState<number>(20)
+  const [techniqueTotalElements, setTechniqueTotalElements] = useState(0)
+  const [techniqueTotalPages, setTechniqueTotalPages] = useState(0)
+  const [metadata, setMetadata] = useState<CatalogMetadata | null>(null)
+  const [levels, setLevels] = useState<AcademicLevel[]>([])
+  const [subjects, setSubjects] = useState<AcademicSubject[]>([])
   const [isSavingLoad, setIsSavingLoad] = useState(false)
   const [isLoadingLoads, setIsLoadingLoads] = useState(true)
+  const [isLoadingGroups, setIsLoadingGroups] = useState(true)
+  const [isLoadingPeriods, setIsLoadingPeriods] = useState(true)
+  const [isLoadingSubjectRows, setIsLoadingSubjectRows] = useState(true)
+  const [isLoadingTechniques, setIsLoadingTechniques] = useState(true)
   const [isSavingGroup, setIsSavingGroup] = useState(false)
   const [isSavingLevel, setIsSavingLevel] = useState(false)
   const [isSavingPeriod, setIsSavingPeriod] = useState(false)
@@ -165,11 +199,11 @@ export function CatalogPage() {
   const ActiveSectionIcon = activeSectionConfig.icon
   const activeSectionSummary = getAcademicSectionSummary(activeSection, {
     levels,
-    groups,
-    techniques,
+    groupsCount: groupTotalElements,
+    techniquesCount: techniqueTotalElements,
     loadsCount: loadTotalElements,
-    subjects,
-    periods,
+    subjectsCount: subjectTotalElements,
+    periodsCount: periodTotalElements,
   })
 
   useEffect(() => {
@@ -185,22 +219,16 @@ export function CatalogPage() {
 
     const loadData = async () => {
       try {
-        const [metadataResponse, groupsResponse, levelsResponse, periodsResponse, subjectsResponse, techniquesResponse] = await Promise.all([
+        const [metadataResponse, levelsResponse, subjectsResponse] = await Promise.all([
           apiRequest<CatalogMetadata>('/admin/catalog/metadata'),
-          apiRequest<AcademicGroup[]>('/admin/groups'),
           apiRequest<AcademicLevel[]>('/admin/levels'),
-          apiRequest<AcademicPeriod[]>('/admin/periods'),
           apiRequest<AcademicSubject[]>('/admin/subjects'),
-          apiRequest<Technique[]>('/admin/techniques'),
         ])
 
         if (isMounted) {
           setMetadata(metadataResponse)
-          setGroups(groupsResponse)
           setLevels(levelsResponse)
-          setPeriods(periodsResponse)
           setSubjects(subjectsResponse)
-          setTechniques(techniquesResponse)
           setLoadForm((current) => hydrateLoadForm(current, metadataResponse, subjectsResponse))
           setGroupForm((current) => hydrateGroupForm(current, metadataResponse))
           setSubjectForm((current) => hydrateSubjectForm(current, metadataResponse))
@@ -254,6 +282,150 @@ export function CatalogPage() {
       isMounted = false
     }
   }, [loadPage, loadPageSize])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadPagedGroups = async () => {
+      setIsLoadingGroups(true)
+
+      try {
+        const response = await apiRequest<PageResponse<AcademicGroup>>(
+          `/admin/groups/paged${toQueryString({ page: String(groupPage), size: String(groupPageSize) })}`,
+        )
+
+        if (isMounted) {
+          setGroups(response.items)
+          setGroupPage(response.page)
+          setGroupPageSize(response.size)
+          setGroupTotalElements(response.totalElements)
+          setGroupTotalPages(response.totalPages)
+        }
+      } catch (caughtError) {
+        if (isMounted) {
+          setError(caughtError instanceof ApiError ? caughtError.message : 'No fue posible cargar los grupos')
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingGroups(false)
+        }
+      }
+    }
+
+    void loadPagedGroups()
+
+    return () => {
+      isMounted = false
+    }
+  }, [groupPage, groupPageSize])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadPagedPeriods = async () => {
+      setIsLoadingPeriods(true)
+
+      try {
+        const response = await apiRequest<PageResponse<AcademicPeriod>>(
+          `/admin/periods/paged${toQueryString({ page: String(periodPage), size: String(periodPageSize) })}`,
+        )
+
+        if (isMounted) {
+          setPeriods(response.items)
+          setPeriodPage(response.page)
+          setPeriodPageSize(response.size)
+          setPeriodTotalElements(response.totalElements)
+          setPeriodTotalPages(response.totalPages)
+        }
+      } catch (caughtError) {
+        if (isMounted) {
+          setError(caughtError instanceof ApiError ? caughtError.message : 'No fue posible cargar los periodos')
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingPeriods(false)
+        }
+      }
+    }
+
+    void loadPagedPeriods()
+
+    return () => {
+      isMounted = false
+    }
+  }, [periodPage, periodPageSize])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadPagedSubjects = async () => {
+      setIsLoadingSubjectRows(true)
+
+      try {
+        const response = await apiRequest<PageResponse<AcademicSubject>>(
+          `/admin/subjects/paged${toQueryString({ page: String(subjectPage), size: String(subjectPageSize) })}`,
+        )
+
+        if (isMounted) {
+          setSubjectRows(response.items)
+          setSubjectPage(response.page)
+          setSubjectPageSize(response.size)
+          setSubjectTotalElements(response.totalElements)
+          setSubjectTotalPages(response.totalPages)
+        }
+      } catch (caughtError) {
+        if (isMounted) {
+          setError(caughtError instanceof ApiError ? caughtError.message : 'No fue posible cargar las materias')
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingSubjectRows(false)
+        }
+      }
+    }
+
+    void loadPagedSubjects()
+
+    return () => {
+      isMounted = false
+    }
+  }, [subjectPage, subjectPageSize])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadPagedTechniques = async () => {
+      setIsLoadingTechniques(true)
+
+      try {
+        const response = await apiRequest<PageResponse<Technique>>(
+          `/admin/techniques/paged${toQueryString({ page: String(techniquePage), size: String(techniquePageSize) })}`,
+        )
+
+        if (isMounted) {
+          setTechniques(response.items)
+          setTechniquePage(response.page)
+          setTechniquePageSize(response.size)
+          setTechniqueTotalElements(response.totalElements)
+          setTechniqueTotalPages(response.totalPages)
+        }
+      } catch (caughtError) {
+        if (isMounted) {
+          setError(caughtError instanceof ApiError ? caughtError.message : 'No fue posible cargar las tecnicas')
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingTechniques(false)
+        }
+      }
+    }
+
+    void loadPagedTechniques()
+
+    return () => {
+      isMounted = false
+    }
+  }, [techniquePage, techniquePageSize])
 
   const hydrateLoadForm = (
     form: AcademicLoadPayload,
@@ -371,22 +543,29 @@ export function CatalogPage() {
     })
   }
 
-  const refreshCatalogData = async () => {
-    const [metadataResponse, groupsResponse, levelsResponse, periodsResponse, subjectsResponse, techniquesResponse] = await Promise.all([
+  const refreshCatalogData = async (
+    options: {
+      loadPage?: number
+      loadPageSize?: number
+      groupPage?: number
+      groupPageSize?: number
+      periodPage?: number
+      periodPageSize?: number
+      subjectPage?: number
+      subjectPageSize?: number
+      techniquePage?: number
+      techniquePageSize?: number
+    } = {},
+  ) => {
+    const [metadataResponse, levelsResponse, subjectsResponse] = await Promise.all([
       apiRequest<CatalogMetadata>('/admin/catalog/metadata'),
-      apiRequest<AcademicGroup[]>('/admin/groups'),
       apiRequest<AcademicLevel[]>('/admin/levels'),
-      apiRequest<AcademicPeriod[]>('/admin/periods'),
       apiRequest<AcademicSubject[]>('/admin/subjects'),
-      apiRequest<Technique[]>('/admin/techniques'),
     ])
 
     setMetadata(metadataResponse)
-    setGroups(groupsResponse)
     setLevels(levelsResponse)
-    setPeriods(periodsResponse)
     setSubjects(subjectsResponse)
-    setTechniques(techniquesResponse)
     if (editingLoadId === null) {
       setLoadForm((current) => hydrateLoadForm(current, metadataResponse, subjectsResponse))
     }
@@ -397,7 +576,13 @@ export function CatalogPage() {
       setSubjectForm((current) => hydrateSubjectForm(current, metadataResponse))
     }
 
-    await refreshLoads(loadPage, loadPageSize)
+    await Promise.all([
+      refreshLoads(options.loadPage ?? loadPage, options.loadPageSize ?? loadPageSize),
+      refreshGroups(options.groupPage ?? groupPage, options.groupPageSize ?? groupPageSize),
+      refreshPeriods(options.periodPage ?? periodPage, options.periodPageSize ?? periodPageSize),
+      refreshSubjectsPage(options.subjectPage ?? subjectPage, options.subjectPageSize ?? subjectPageSize),
+      refreshTechniques(options.techniquePage ?? techniquePage, options.techniquePageSize ?? techniquePageSize),
+    ])
   }
 
   const refreshLoads = async (nextPage = loadPage, nextSize = loadPageSize) => {
@@ -409,6 +594,50 @@ export function CatalogPage() {
     setLoadPageSize(response.size)
     setLoadTotalElements(response.totalElements)
     setLoadTotalPages(response.totalPages)
+  }
+
+  const refreshGroups = async (nextPage = groupPage, nextSize = groupPageSize) => {
+    const response = await apiRequest<PageResponse<AcademicGroup>>(
+      `/admin/groups/paged${toQueryString({ page: String(nextPage), size: String(nextSize) })}`,
+    )
+    setGroups(response.items)
+    setGroupPage(response.page)
+    setGroupPageSize(response.size)
+    setGroupTotalElements(response.totalElements)
+    setGroupTotalPages(response.totalPages)
+  }
+
+  const refreshPeriods = async (nextPage = periodPage, nextSize = periodPageSize) => {
+    const response = await apiRequest<PageResponse<AcademicPeriod>>(
+      `/admin/periods/paged${toQueryString({ page: String(nextPage), size: String(nextSize) })}`,
+    )
+    setPeriods(response.items)
+    setPeriodPage(response.page)
+    setPeriodPageSize(response.size)
+    setPeriodTotalElements(response.totalElements)
+    setPeriodTotalPages(response.totalPages)
+  }
+
+  const refreshSubjectsPage = async (nextPage = subjectPage, nextSize = subjectPageSize) => {
+    const response = await apiRequest<PageResponse<AcademicSubject>>(
+      `/admin/subjects/paged${toQueryString({ page: String(nextPage), size: String(nextSize) })}`,
+    )
+    setSubjectRows(response.items)
+    setSubjectPage(response.page)
+    setSubjectPageSize(response.size)
+    setSubjectTotalElements(response.totalElements)
+    setSubjectTotalPages(response.totalPages)
+  }
+
+  const refreshTechniques = async (nextPage = techniquePage, nextSize = techniquePageSize) => {
+    const response = await apiRequest<PageResponse<Technique>>(
+      `/admin/techniques/paged${toQueryString({ page: String(nextPage), size: String(nextSize) })}`,
+    )
+    setTechniques(response.items)
+    setTechniquePage(response.page)
+    setTechniquePageSize(response.size)
+    setTechniqueTotalElements(response.totalElements)
+    setTechniqueTotalPages(response.totalPages)
   }
 
   const handleLoadInputChange = <K extends keyof AcademicLoadPayload>(key: K, value: AcademicLoadPayload[K]) => {
@@ -650,7 +879,11 @@ export function CatalogPage() {
 
     try {
       await apiRequest(`/admin/groups/${group.id}`, { method: 'DELETE' })
-      await refreshCatalogData()
+      const nextPage = groups.length === 1 && groupPage > 0 ? groupPage - 1 : groupPage
+      if (nextPage !== groupPage) {
+        setGroupPage(nextPage)
+      }
+      await refreshCatalogData({ groupPage: nextPage })
       if (editingGroupId === group.id) {
         resetGroupForm()
       }
@@ -684,8 +917,10 @@ export function CatalogPage() {
     try {
       await apiRequest(`/admin/loads/${load.id}`, { method: 'DELETE' })
       const nextPage = loads.length === 1 && loadPage > 0 ? loadPage - 1 : loadPage
-      setLoadPage(nextPage)
-      await refreshCatalogData()
+      if (nextPage !== loadPage) {
+        setLoadPage(nextPage)
+      }
+      await refreshCatalogData({ loadPage: nextPage })
       if (editingLoadId === load.id) {
         resetLoadForm()
       }
@@ -735,7 +970,11 @@ export function CatalogPage() {
 
     try {
       await apiRequest(`/admin/periods/${period.id}`, { method: 'DELETE' })
-      await refreshCatalogData()
+      const nextPage = periods.length === 1 && periodPage > 0 ? periodPage - 1 : periodPage
+      if (nextPage !== periodPage) {
+        setPeriodPage(nextPage)
+      }
+      await refreshCatalogData({ periodPage: nextPage })
       if (editingPeriodId === period.id) {
         resetPeriodForm()
       }
@@ -776,7 +1015,11 @@ export function CatalogPage() {
 
     try {
       await apiRequest(`/admin/subjects/${subject.id}`, { method: 'DELETE' })
-      await refreshCatalogData()
+      const nextPage = subjectRows.length === 1 && subjectPage > 0 ? subjectPage - 1 : subjectPage
+      if (nextPage !== subjectPage) {
+        setSubjectPage(nextPage)
+      }
+      await refreshCatalogData({ subjectPage: nextPage })
       if (editingSubjectId === subject.id) {
         resetSubjectForm()
       }
@@ -796,7 +1039,11 @@ export function CatalogPage() {
 
     try {
       await apiRequest(`/admin/techniques/${technique.id}`, { method: 'DELETE' })
-      await refreshCatalogData()
+      const nextPage = techniques.length === 1 && techniquePage > 0 ? techniquePage - 1 : techniquePage
+      if (nextPage !== techniquePage) {
+        setTechniquePage(nextPage)
+      }
+      await refreshCatalogData({ techniquePage: nextPage })
       if (editingTechniqueId === technique.id) {
         resetTechniqueForm()
       }
@@ -814,22 +1061,33 @@ export function CatalogPage() {
     navigate(`/app/admin/catalogos/${section}`)
   }
 
-  const renderLoadPagination = () => (
+  const renderPaginationControls = ({
+    itemCount,
+    totalElements,
+    page,
+    pageSize,
+    totalPages,
+    isLoading,
+    itemLabel,
+    pageSizeAriaLabel,
+    onPageChange,
+    onPageSizeChange,
+  }: PaginationControlsProps) => (
     <div className="mt-4 flex flex-col gap-3 rounded-3xl bg-slate-50 px-4 py-4 text-sm text-slate-600 lg:flex-row lg:items-center lg:justify-between">
       <p>
-        Mostrando <span className="font-semibold text-slate-900">{loads.length}</span> de{' '}
-        <span className="font-semibold text-slate-900">{loadTotalElements}</span> cargas academicas.
+        Mostrando <span className="font-semibold text-slate-900">{itemCount}</span> de{' '}
+        <span className="font-semibold text-slate-900">{totalElements}</span> {itemLabel}.
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2">
           <span>Filas por pagina</span>
           <select
-            aria-label="Cantidad de filas por pagina para cargas academicas"
+            aria-label={pageSizeAriaLabel}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none transition focus:border-brand-magenta focus:ring-4 focus:ring-brand-magenta/10"
-            value={loadPageSize}
+            value={pageSize}
             onChange={(event) => {
-              setLoadPage(0)
-              setLoadPageSize(Number(event.target.value))
+              onPageChange(0)
+              onPageSizeChange(Number(event.target.value))
             }}
           >
             {PAGE_SIZE_OPTIONS.map((option) => (
@@ -842,19 +1100,19 @@ export function CatalogPage() {
         <div className="inline-flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setLoadPage((current) => Math.max(0, current - 1))}
-            disabled={isLoadingLoads || loadPage === 0}
+            onClick={() => onPageChange(Math.max(0, page - 1))}
+            disabled={isLoading || page === 0}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Anterior
           </button>
           <span className="min-w-28 text-center font-semibold text-slate-900">
-            Pagina {loadTotalPages ? loadPage + 1 : 0} de {Math.max(loadTotalPages, 1)}
+            Pagina {totalPages ? page + 1 : 0} de {Math.max(totalPages, 1)}
           </span>
           <button
             type="button"
-            onClick={() => setLoadPage((current) => (loadTotalPages ? Math.min(loadTotalPages - 1, current + 1) : current))}
-            disabled={isLoadingLoads || loadTotalPages === 0 || loadPage >= loadTotalPages - 1}
+            onClick={() => onPageChange(totalPages ? Math.min(totalPages - 1, page + 1) : page)}
+            disabled={isLoading || totalPages === 0 || page >= totalPages - 1}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Siguiente
@@ -1145,7 +1403,18 @@ export function CatalogPage() {
             <h2 className="font-heading text-3xl text-slate-950">Cargas registradas</h2>
           </div>
 
-          {renderLoadPagination()}
+          {renderPaginationControls({
+            itemCount: loads.length,
+            totalElements: loadTotalElements,
+            page: loadPage,
+            pageSize: loadPageSize,
+            totalPages: loadTotalPages,
+            isLoading: isLoadingLoads,
+            itemLabel: 'cargas academicas',
+            pageSizeAriaLabel: 'Cantidad de filas por pagina para cargas academicas',
+            onPageChange: setLoadPage,
+            onPageSizeChange: setLoadPageSize,
+          })}
 
           <div className="mt-6 overflow-hidden rounded-3xl border border-slate-100">
             <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
@@ -1282,6 +1551,19 @@ export function CatalogPage() {
             <h2 className="font-heading text-3xl text-slate-950">Materias registradas</h2>
           </div>
 
+          {renderPaginationControls({
+            itemCount: subjectRows.length,
+            totalElements: subjectTotalElements,
+            page: subjectPage,
+            pageSize: subjectPageSize,
+            totalPages: subjectTotalPages,
+            isLoading: isLoadingSubjectRows,
+            itemLabel: 'materias',
+            pageSizeAriaLabel: 'Cantidad de filas por pagina para materias',
+            onPageChange: setSubjectPage,
+            onPageSizeChange: setSubjectPageSize,
+          })}
+
           <div className="mt-6 overflow-hidden rounded-3xl border border-slate-100">
             <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
               <thead className="bg-slate-50 text-slate-500">
@@ -1293,7 +1575,7 @@ export function CatalogPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {subjects.map((subject) => (
+                {subjectRows.map((subject) => (
                   <tr key={subject.id}>
                     <td className="px-4 py-4 font-semibold text-slate-900">{subject.code}</td>
                     <td className="px-4 py-4 text-slate-600">{subject.name}</td>
@@ -1320,7 +1602,7 @@ export function CatalogPage() {
                     </td>
                   </tr>
                 ))}
-                {!subjects.length ? (
+                {!subjectRows.length ? (
                   <tr>
                     <td colSpan={4} className="px-4 py-6 text-center text-slate-500">
                       No hay materias registradas todavia.
@@ -1435,6 +1717,19 @@ export function CatalogPage() {
             <CalendarRange className="h-5 w-5 text-brand-magenta" />
             <h2 className="font-heading text-3xl text-slate-950">Periodos registrados</h2>
           </div>
+
+          {renderPaginationControls({
+            itemCount: periods.length,
+            totalElements: periodTotalElements,
+            page: periodPage,
+            pageSize: periodPageSize,
+            totalPages: periodTotalPages,
+            isLoading: isLoadingPeriods,
+            itemLabel: 'periodos',
+            pageSizeAriaLabel: 'Cantidad de filas por pagina para periodos',
+            onPageChange: setPeriodPage,
+            onPageSizeChange: setPeriodPageSize,
+          })}
 
           <div className="mt-6 overflow-hidden rounded-3xl border border-slate-100">
             <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
@@ -1578,6 +1873,19 @@ export function CatalogPage() {
             <h2 className="font-heading text-3xl text-slate-950">Grupos registrados</h2>
           </div>
 
+          {renderPaginationControls({
+            itemCount: groups.length,
+            totalElements: groupTotalElements,
+            page: groupPage,
+            pageSize: groupPageSize,
+            totalPages: groupTotalPages,
+            isLoading: isLoadingGroups,
+            itemLabel: 'grupos',
+            pageSizeAriaLabel: 'Cantidad de filas por pagina para grupos',
+            onPageChange: setGroupPage,
+            onPageSizeChange: setGroupPageSize,
+          })}
+
           <div className="mt-6 overflow-hidden rounded-3xl border border-slate-100">
             <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
               <thead className="bg-slate-50 text-slate-500">
@@ -1686,6 +1994,19 @@ export function CatalogPage() {
             <Layers3 className="h-5 w-5 text-brand-magenta" />
             <h2 className="font-heading text-3xl text-slate-950">Tecnicas registradas</h2>
           </div>
+
+          {renderPaginationControls({
+            itemCount: techniques.length,
+            totalElements: techniqueTotalElements,
+            page: techniquePage,
+            pageSize: techniquePageSize,
+            totalPages: techniqueTotalPages,
+            isLoading: isLoadingTechniques,
+            itemLabel: 'tecnicas',
+            pageSizeAriaLabel: 'Cantidad de filas por pagina para tecnicas',
+            onPageChange: setTechniquePage,
+            onPageSizeChange: setTechniquePageSize,
+          })}
 
           <div className="mt-6 overflow-hidden rounded-3xl border border-slate-100">
             <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
