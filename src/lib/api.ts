@@ -1,4 +1,4 @@
-import { getAuthSession } from './auth'
+import { clearAuthSession, getAuthSession } from './auth'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080/api'
 
@@ -19,9 +19,18 @@ type RequestOptions = Omit<RequestInit, 'body'> & {
   auth?: boolean
 }
 
+function handleUnauthorizedResponse() {
+  clearAuthSession()
+
+  if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+    window.location.replace('/login')
+  }
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers(options.headers)
-  const session = options.auth === false ? null : getAuthSession()
+  const requiresAuth = options.auth !== false
+  const session = requiresAuth ? getAuthSession() : null
 
   if (session?.token) {
     headers.set('Authorization', `Bearer ${session.token}`)
@@ -38,6 +47,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     headers,
     body,
   })
+
+  if (requiresAuth && response.status === 401) {
+    handleUnauthorizedResponse()
+  }
 
   if (response.status === 204) {
     return undefined as T
