@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BookOpen, CalendarRange, GraduationCap, Layers3, Pencil, Plus, Rows3, Trash2, Users } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ApiError, apiRequest } from '../lib/api'
+import { ApiError, apiRequest, toQueryString } from '../lib/api'
 import type {
   AcademicGroup,
   AcademicGroupPayload,
@@ -14,6 +14,7 @@ import type {
   AcademicSubject,
   AcademicSubjectPayload,
   CatalogMetadata,
+  PageResponse,
   Technique,
   TechniquePayload,
 } from '../types/dashboard'
@@ -65,6 +66,7 @@ const academicSections: Array<{
 ]
 
 const defaultAcademicSection: AcademicSectionKey = 'niveles'
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 
 const isAcademicSectionKey = (value: string | undefined): value is AcademicSectionKey =>
   academicSections.some((section) => section.key === value)
@@ -75,7 +77,7 @@ const getAcademicSectionSummary = (
     levels: AcademicLevel[]
     groups: AcademicGroup[]
     techniques: Technique[]
-    loads: AcademicLoad[]
+    loadsCount: number
     subjects: AcademicSubject[]
     periods: AcademicPeriod[]
   },
@@ -88,7 +90,7 @@ const getAcademicSectionSummary = (
     case 'tecnicas':
       return { count: values.techniques.length, label: 'tecnicas registradas' }
     case 'carga-academica':
-      return { count: values.loads.length, label: 'cargas academicas registradas' }
+      return { count: values.loadsCount, label: 'cargas academicas registradas' }
     case 'materias':
       return { count: values.subjects.length, label: 'materias registradas' }
     case 'periodos':
@@ -100,6 +102,10 @@ export function CatalogPage() {
   const navigate = useNavigate()
   const { gestion } = useParams<{ gestion?: string }>()
   const [loads, setLoads] = useState<AcademicLoad[]>([])
+  const [loadPage, setLoadPage] = useState(0)
+  const [loadPageSize, setLoadPageSize] = useState<number>(20)
+  const [loadTotalElements, setLoadTotalElements] = useState(0)
+  const [loadTotalPages, setLoadTotalPages] = useState(0)
   const [metadata, setMetadata] = useState<CatalogMetadata | null>(null)
   const [groups, setGroups] = useState<AcademicGroup[]>([])
   const [levels, setLevels] = useState<AcademicLevel[]>([])
@@ -107,6 +113,7 @@ export function CatalogPage() {
   const [subjects, setSubjects] = useState<AcademicSubject[]>([])
   const [techniques, setTechniques] = useState<Technique[]>([])
   const [isSavingLoad, setIsSavingLoad] = useState(false)
+  const [isLoadingLoads, setIsLoadingLoads] = useState(true)
   const [isSavingGroup, setIsSavingGroup] = useState(false)
   const [isSavingLevel, setIsSavingLevel] = useState(false)
   const [isSavingPeriod, setIsSavingPeriod] = useState(false)
@@ -160,7 +167,7 @@ export function CatalogPage() {
     levels,
     groups,
     techniques,
-    loads,
+    loadsCount: loadTotalElements,
     subjects,
     periods,
   })
@@ -178,9 +185,8 @@ export function CatalogPage() {
 
     const loadData = async () => {
       try {
-        const [metadataResponse, loadsResponse, groupsResponse, levelsResponse, periodsResponse, subjectsResponse, techniquesResponse] = await Promise.all([
+        const [metadataResponse, groupsResponse, levelsResponse, periodsResponse, subjectsResponse, techniquesResponse] = await Promise.all([
           apiRequest<CatalogMetadata>('/admin/catalog/metadata'),
-          apiRequest<AcademicLoad[]>('/admin/loads'),
           apiRequest<AcademicGroup[]>('/admin/groups'),
           apiRequest<AcademicLevel[]>('/admin/levels'),
           apiRequest<AcademicPeriod[]>('/admin/periods'),
@@ -190,7 +196,6 @@ export function CatalogPage() {
 
         if (isMounted) {
           setMetadata(metadataResponse)
-          setLoads(loadsResponse)
           setGroups(groupsResponse)
           setLevels(levelsResponse)
           setPeriods(periodsResponse)
@@ -213,6 +218,42 @@ export function CatalogPage() {
       isMounted = false
     }
   }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadPagedLoads = async () => {
+      setIsLoadingLoads(true)
+
+      try {
+        const response = await apiRequest<PageResponse<AcademicLoad>>(
+          `/admin/loads/paged${toQueryString({ page: String(loadPage), size: String(loadPageSize) })}`,
+        )
+
+        if (isMounted) {
+          setLoads(response.items)
+          setLoadPage(response.page)
+          setLoadPageSize(response.size)
+          setLoadTotalElements(response.totalElements)
+          setLoadTotalPages(response.totalPages)
+        }
+      } catch (caughtError) {
+        if (isMounted) {
+          setError(caughtError instanceof ApiError ? caughtError.message : 'No fue posible cargar las cargas academicas')
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingLoads(false)
+        }
+      }
+    }
+
+    void loadPagedLoads()
+
+    return () => {
+      isMounted = false
+    }
+  }, [loadPage, loadPageSize])
 
   const hydrateLoadForm = (
     form: AcademicLoadPayload,
@@ -331,9 +372,8 @@ export function CatalogPage() {
   }
 
   const refreshCatalogData = async () => {
-    const [metadataResponse, loadsResponse, groupsResponse, levelsResponse, periodsResponse, subjectsResponse, techniquesResponse] = await Promise.all([
+    const [metadataResponse, groupsResponse, levelsResponse, periodsResponse, subjectsResponse, techniquesResponse] = await Promise.all([
       apiRequest<CatalogMetadata>('/admin/catalog/metadata'),
-      apiRequest<AcademicLoad[]>('/admin/loads'),
       apiRequest<AcademicGroup[]>('/admin/groups'),
       apiRequest<AcademicLevel[]>('/admin/levels'),
       apiRequest<AcademicPeriod[]>('/admin/periods'),
@@ -342,7 +382,6 @@ export function CatalogPage() {
     ])
 
     setMetadata(metadataResponse)
-    setLoads(loadsResponse)
     setGroups(groupsResponse)
     setLevels(levelsResponse)
     setPeriods(periodsResponse)
@@ -357,6 +396,19 @@ export function CatalogPage() {
     if (editingSubjectId === null) {
       setSubjectForm((current) => hydrateSubjectForm(current, metadataResponse))
     }
+
+    await refreshLoads(loadPage, loadPageSize)
+  }
+
+  const refreshLoads = async (nextPage = loadPage, nextSize = loadPageSize) => {
+    const response = await apiRequest<PageResponse<AcademicLoad>>(
+      `/admin/loads/paged${toQueryString({ page: String(nextPage), size: String(nextSize) })}`,
+    )
+    setLoads(response.items)
+    setLoadPage(response.page)
+    setLoadPageSize(response.size)
+    setLoadTotalElements(response.totalElements)
+    setLoadTotalPages(response.totalPages)
   }
 
   const handleLoadInputChange = <K extends keyof AcademicLoadPayload>(key: K, value: AcademicLoadPayload[K]) => {
@@ -631,6 +683,8 @@ export function CatalogPage() {
 
     try {
       await apiRequest(`/admin/loads/${load.id}`, { method: 'DELETE' })
+      const nextPage = loads.length === 1 && loadPage > 0 ? loadPage - 1 : loadPage
+      setLoadPage(nextPage)
       await refreshCatalogData()
       if (editingLoadId === load.id) {
         resetLoadForm()
@@ -759,6 +813,56 @@ export function CatalogPage() {
 
     navigate(`/app/admin/catalogos/${section}`)
   }
+
+  const renderLoadPagination = () => (
+    <div className="mt-4 flex flex-col gap-3 rounded-3xl bg-slate-50 px-4 py-4 text-sm text-slate-600 lg:flex-row lg:items-center lg:justify-between">
+      <p>
+        Mostrando <span className="font-semibold text-slate-900">{loads.length}</span> de{' '}
+        <span className="font-semibold text-slate-900">{loadTotalElements}</span> cargas academicas.
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2">
+          <span>Filas por pagina</span>
+          <select
+            aria-label="Cantidad de filas por pagina para cargas academicas"
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none transition focus:border-brand-magenta focus:ring-4 focus:ring-brand-magenta/10"
+            value={loadPageSize}
+            onChange={(event) => {
+              setLoadPage(0)
+              setLoadPageSize(Number(event.target.value))
+            }}
+          >
+            {PAGE_SIZE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="inline-flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setLoadPage((current) => Math.max(0, current - 1))}
+            disabled={isLoadingLoads || loadPage === 0}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Anterior
+          </button>
+          <span className="min-w-28 text-center font-semibold text-slate-900">
+            Pagina {loadTotalPages ? loadPage + 1 : 0} de {Math.max(loadTotalPages, 1)}
+          </span>
+          <button
+            type="button"
+            onClick={() => setLoadPage((current) => (loadTotalPages ? Math.min(loadTotalPages - 1, current + 1) : current))}
+            disabled={isLoadingLoads || loadTotalPages === 0 || loadPage >= loadTotalPages - 1}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Siguiente
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 
   return (
     <div className="space-y-6">
@@ -1040,6 +1144,8 @@ export function CatalogPage() {
             <GraduationCap className="h-5 w-5 text-brand-magenta" />
             <h2 className="font-heading text-3xl text-slate-950">Cargas registradas</h2>
           </div>
+
+          {renderLoadPagination()}
 
           <div className="mt-6 overflow-hidden rounded-3xl border border-slate-100">
             <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
