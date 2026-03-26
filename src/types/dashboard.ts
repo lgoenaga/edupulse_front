@@ -237,6 +237,9 @@ export type SurveySubmissionFilters = {
   levelId: string
   groupId: string
   periodId: string
+  studentId: string
+  submittedFromDate: string
+  submittedToDate: string
 }
 
 export type SurveyAnswerPayload = {

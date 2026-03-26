@@ -1,8 +1,10 @@
-import { Eye, LoaderCircle } from 'lucide-react'
+import { Eye, FileSpreadsheet, LoaderCircle } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { ApiError, apiRequest, toQueryString } from '../lib/api'
+import { exportSurveySubmissionsToExcel } from '../lib/export'
 import type {
   CatalogMetadata,
+  Student,
   SurveySubmissionDetail,
   SurveySubmissionFilters,
   SurveySubmissionRecord,
@@ -12,6 +14,9 @@ const initialFilters: SurveySubmissionFilters = {
   levelId: 'all',
   groupId: 'all',
   periodId: 'all',
+  studentId: 'all',
+  submittedFromDate: '',
+  submittedToDate: '',
 }
 
 const selectBase =
@@ -26,10 +31,12 @@ export function SurveySubmissionsPage() {
     techniques: [],
     teachers: [],
   })
+  const [students, setStudents] = useState<Student[]>([])
   const [submissions, setSubmissions] = useState<SurveySubmissionRecord[]>([])
   const [selectedSubmission, setSelectedSubmission] = useState<SurveySubmissionDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState('')
   const [detailError, setDetailError] = useState('')
 
@@ -38,9 +45,13 @@ export function SurveySubmissionsPage() {
 
     const loadMetadata = async () => {
       try {
-        const response = await apiRequest<CatalogMetadata>('/admin/catalog/metadata')
+        const [metadataResponse, studentsResponse] = await Promise.all([
+          apiRequest<CatalogMetadata>('/admin/catalog/metadata'),
+          apiRequest<Student[]>('/admin/students'),
+        ])
         if (isMounted) {
-          setMetadata(response)
+          setMetadata(metadataResponse)
+          setStudents(studentsResponse)
         }
       } catch (caughtError) {
         if (isMounted) {
@@ -102,24 +113,70 @@ export function SurveySubmissionsPage() {
     return metadata.groups.filter((group) => group.label.startsWith(`${levelLabel} · `) || group.label.endsWith(` · ${levelLabel}`))
   }, [filters.levelId, metadata.groups, metadata.levels])
 
+  const filteredStudentOptions = useMemo(() => {
+    const allowedGroupIds = new Set(filteredGroupOptions.map((group) => String(group.id)))
+
+    return students.filter((student) => {
+      if (filters.groupId !== 'all') {
+        return String(student.groupId) === filters.groupId
+      }
+
+      if (filters.levelId !== 'all') {
+        return allowedGroupIds.has(String(student.groupId))
+      }
+
+      return true
+    })
+  }, [filteredGroupOptions, filters.groupId, filters.levelId, students])
+
   const summaryLabel = useMemo(() => {
+    const selectedStudent =
+      filters.studentId === 'all'
+        ? null
+        : students.find((student) => String(student.id) === filters.studentId)?.fullName
+
     if (filters.periodId === 'all') {
-      return 'envios visibles con los filtros activos'
+      return selectedStudent
+        ? `envios visibles para ${selectedStudent} con los filtros activos`
+        : 'envios visibles con los filtros activos'
     }
 
     const periodLabel = metadata.periods.find((period) => String(period.id) === filters.periodId)?.label
-    return periodLabel ? `envios visibles para ${periodLabel}` : 'envios visibles con los filtros activos'
-  }, [filters.periodId, metadata.periods])
+    if (!periodLabel) {
+      return selectedStudent
+        ? `envios visibles para ${selectedStudent} con los filtros activos`
+        : 'envios visibles con los filtros activos'
+    }
+
+    return selectedStudent ? `envios visibles para ${selectedStudent} en ${periodLabel}` : `envios visibles para ${periodLabel}`
+  }, [filters.periodId, filters.studentId, metadata.periods, students])
 
   const handleFilterChange = (name: keyof SurveySubmissionFilters, value: string) => {
     setFilters((current) => {
       const next = { ...current, [name]: value }
       if (name === 'levelId') {
         next.groupId = 'all'
+        next.studentId = 'all'
+      }
+      if (name === 'groupId') {
+        next.studentId = 'all'
       }
       return next
     })
     setDetailError('')
+  }
+
+  const handleExport = async () => {
+    if (!submissions.length) {
+      return
+    }
+
+    setIsExporting(true)
+    try {
+      exportSurveySubmissionsToExcel('edupulse-envios-filtrados.xlsx', submissions)
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   const handleViewDetail = async (submissionId: number) => {
@@ -159,7 +216,7 @@ export function SurveySubmissionsPage() {
         </div>
       </header>
 
-      <section className="grid gap-3 rounded-[28px] border border-white/70 bg-white/75 p-4 shadow-[0_18px_40px_rgba(102,39,90,0.1)] backdrop-blur md:grid-cols-3">
+      <section className="grid gap-3 rounded-[28px] border border-white/70 bg-white/75 p-4 shadow-[0_18px_40px_rgba(102,39,90,0.1)] backdrop-blur md:grid-cols-2 xl:grid-cols-3">
         <select
           aria-label="Filtrar por nivel"
           className={selectBase}
@@ -199,6 +256,39 @@ export function SurveySubmissionsPage() {
             </option>
           ))}
         </select>
+        <select
+          aria-label="Filtrar por estudiante"
+          className={selectBase}
+          value={filters.studentId}
+          onChange={(event) => handleFilterChange('studentId', event.target.value)}
+        >
+          <option value="all">Todos los estudiantes</option>
+          {filteredStudentOptions.map((student) => (
+            <option key={student.id} value={student.id}>
+              {student.fullName} · {student.studentCode}
+            </option>
+          ))}
+        </select>
+        <label className={`${selectBase} flex flex-col gap-2 py-2`}>
+          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Desde</span>
+          <input
+            aria-label="Filtrar desde fecha"
+            type="date"
+            className="bg-transparent text-sm text-slate-700 outline-none"
+            value={filters.submittedFromDate}
+            onChange={(event) => handleFilterChange('submittedFromDate', event.target.value)}
+          />
+        </label>
+        <label className={`${selectBase} flex flex-col gap-2 py-2`}>
+          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Hasta</span>
+          <input
+            aria-label="Filtrar hasta fecha"
+            type="date"
+            className="bg-transparent text-sm text-slate-700 outline-none"
+            value={filters.submittedToDate}
+            onChange={(event) => handleFilterChange('submittedToDate', event.target.value)}
+          />
+        </label>
       </section>
 
       {error ? <p className="rounded-3xl bg-rose-50 px-4 py-4 text-sm text-rose-700">{error}</p> : null}
@@ -210,12 +300,23 @@ export function SurveySubmissionsPage() {
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-magenta">Solo lectura</p>
             <h2 className="mt-2 font-heading text-3xl text-slate-950">Envios registrados</h2>
           </div>
-          {isLoading ? (
-            <div className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
-              <LoaderCircle className="h-4 w-4 animate-spin" />
-              Cargando...
-            </div>
-          ) : null}
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={handleExport}
+              disabled={!submissions.length || isLoading || isExporting}
+              className="inline-flex items-center gap-2 rounded-2xl border border-white/70 bg-white/90 px-4 py-3 text-sm font-semibold text-slate-900 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              {isExporting ? 'Exportando...' : 'Exportar Excel'}
+            </button>
+            {isLoading ? (
+              <div className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+                Cargando...
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <div className="mt-6 overflow-hidden rounded-3xl border border-slate-100">

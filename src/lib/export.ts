@@ -1,7 +1,12 @@
 import { toPng } from 'html-to-image'
 import jsPDF from 'jspdf'
 import * as XLSX from 'xlsx'
-import type { CategoryAverage, TeacherAverage, TechniqueAverage } from '../types/dashboard'
+import type {
+  CategoryAverage,
+  SurveySubmissionRecord,
+  TeacherAverage,
+  TechniqueAverage,
+} from '../types/dashboard'
 
 export async function exportDashboardToPdf(element: HTMLElement, filename: string) {
   const dataUrl = await toPng(element, {
@@ -49,6 +54,25 @@ export function exportAggregatesToExcel(
   XLSX.writeFile(workbook, filename)
 }
 
+export function exportSurveySubmissionsToExcel(filename: string, submissions: SurveySubmissionRecord[]) {
+  const workbook = XLSX.utils.book_new()
+  const submissionsSheet = XLSX.utils.json_to_sheet(
+    submissions.map((submission) => ({
+      estudiante: submission.studentName,
+      codigo: submission.studentCode,
+      correo: submission.studentEmail,
+      grupo: submission.groupName,
+      nivel: submission.levelName,
+      periodo: submission.periodName,
+      enviado: formatExportDate(submission.submittedAt),
+      respuestas: submission.responseCount,
+    })),
+  )
+
+  XLSX.utils.book_append_sheet(workbook, submissionsSheet, 'Envios')
+  XLSX.writeFile(workbook, filename)
+}
+
 function normalizeAggregate(item: CategoryAverage | TechniqueAverage | TeacherAverage) {
   return {
     id: item.id,
@@ -56,4 +80,11 @@ function normalizeAggregate(item: CategoryAverage | TechniqueAverage | TeacherAv
     average: item.average,
     totalResponses: item.totalResponses,
   }
+}
+
+function formatExportDate(value: string) {
+  return new Intl.DateTimeFormat('es-CO', {
+    dateStyle: 'long',
+    timeStyle: 'short',
+  }).format(new Date(value))
 }
