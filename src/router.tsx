@@ -5,6 +5,7 @@ import { AdminDashboardPage } from './pages/AdminDashboardPage'
 import { CatalogPage } from './pages/CatalogPage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { SurveySubmissionsPage } from './pages/SurveySubmissionsPage'
 import { StudentSurveyPage } from './pages/StudentSurveyPage'
 import { UserManagementPage } from './pages/UserManagementPage'
 
@@ -54,6 +55,14 @@ export const router = createBrowserRouter([
         element: (
           <RequireAuth allowedRoles={['ADMIN']}>
             <UserManagementPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: 'admin/submissions',
+        element: (
+          <RequireAuth allowedRoles={['ADMIN']}>
+            <SurveySubmissionsPage />
           </RequireAuth>
         ),
       },

@@ -7,6 +7,7 @@ const links = [
   { to: '/app/admin/dashboard', activePrefix: '/app/admin/dashboard', label: 'Dashboard Admin', icon: LayoutDashboard, roles: ['ADMIN'] },
   { to: '/app/admin/catalogos/niveles', activePrefix: '/app/admin/catalogos', label: 'Gestion Academica', icon: Settings2, roles: ['ADMIN'] },
   { to: '/app/admin/usuarios/estudiantes', activePrefix: '/app/admin/usuarios', label: 'Gestion de Usuarios', icon: Users, roles: ['ADMIN'] },
+  { to: '/app/admin/submissions', activePrefix: '/app/admin/submissions', label: 'Envios de Encuesta', icon: ClipboardList, roles: ['ADMIN'] },
   { to: '/app/student/encuesta', activePrefix: '/app/student/encuesta', label: 'Encuesta Vigente', icon: ClipboardList, roles: ['ESTUDIANTE'] },
 ]
 
@@ -17,7 +18,10 @@ export function AppShell() {
   const visibleLinks = links.filter((link) => session && link.roles.includes(session.role))
   const dashboardLink = visibleLinks.find((link) => link.activePrefix === '/app/admin/dashboard')
   const managementLinks = visibleLinks.filter(
-    (link) => link.activePrefix === '/app/admin/catalogos' || link.activePrefix === '/app/admin/usuarios',
+    (link) =>
+      link.activePrefix === '/app/admin/catalogos'
+      || link.activePrefix === '/app/admin/usuarios'
+      || link.activePrefix === '/app/admin/submissions',
   )
   const secondaryLinks = visibleLinks.filter(
     (link) => link !== dashboardLink && !managementLinks.includes(link),

@@ -194,6 +194,51 @@ export type StudentContext = {
   teacherAssignments: TeacherAssignment[]
 }
 
+export type SurveySubmissionRecord = {
+  id: number
+  studentId: number
+  studentCode: string
+  studentName: string
+  studentEmail: string
+  groupId: number
+  groupName: string
+  levelId: number
+  levelName: string
+  periodId: number
+  periodName: string
+  submittedAt: string
+  responseCount: number
+}
+
+export type SurveyResponseDetail = {
+  questionId: number
+  prompt: string
+  category: string
+  score: number
+  teacherName: string | null
+  subjectName: string | null
+}
+
+export type SurveySubmissionDetail = {
+  id: number
+  studentId: number
+  studentCode: string
+  studentName: string
+  studentEmail: string
+  groupName: string
+  levelName: string
+  techniqueName: string
+  periodName: string
+  submittedAt: string
+  responses: SurveyResponseDetail[]
+}
+
+export type SurveySubmissionFilters = {
+  levelId: string
+  groupId: string
+  periodId: string
+}
+
 export type SurveyAnswerPayload = {
   questionId: number
   score: number
