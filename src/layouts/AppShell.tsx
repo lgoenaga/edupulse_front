@@ -47,6 +47,17 @@ export function AppShell() {
     )
   }
 
+  const logoutButton = (
+    <button
+      type="button"
+      onClick={handleLogout}
+      className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white/88 px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-white xl:max-w-65"
+    >
+      <LogOut className="h-4 w-4" />
+      Cerrar sesion
+    </button>
+  )
+
   return (
     <div className="min-h-screen bg-transparent px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
@@ -82,21 +93,18 @@ export function AppShell() {
                 {managementLinks.map(({ to, activePrefix, label, icon }) => renderNavLink(to, activePrefix, label, icon))}
               </nav>
 
-              <div className="flex justify-start xl:justify-end">
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white/88 px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-white xl:max-w-65"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Cerrar sesion
-                </button>
-              </div>
+              <div className="flex justify-start xl:justify-end">{logoutButton}</div>
             </div>
           ) : (
-            <nav className="mt-4 flex flex-wrap items-center justify-center gap-2" aria-label="Navegacion principal">
-              {secondaryLinks.map(({ to, activePrefix, label, icon }) => renderNavLink(to, activePrefix, label, icon))}
-            </nav>
+            <div className="mt-4 grid gap-3 xl:grid-cols-[1fr_auto_1fr] xl:items-start">
+              <div className="hidden xl:block" />
+
+              <nav className="flex flex-wrap items-center justify-center gap-2" aria-label="Navegacion principal">
+                {secondaryLinks.map(({ to, activePrefix, label, icon }) => renderNavLink(to, activePrefix, label, icon))}
+              </nav>
+
+              <div className="flex justify-start xl:justify-end">{logoutButton}</div>
+            </div>
           )}
         </header>
 
