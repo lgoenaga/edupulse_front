@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Pencil, Plus, Trash2, Users } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ApiError, apiRequest } from '../lib/api'
-import type { CatalogMetadata, Student, StudentPayload, Teacher, TeacherPayload } from '../types/dashboard'
+import { ApiError, apiRequest, toQueryString } from '../lib/api'
+import type { CatalogMetadata, PageResponse, Student, StudentPayload, Teacher, TeacherPayload } from '../types/dashboard'
 
 type UserSectionKey = 'estudiantes' | 'docentes'
 
@@ -24,15 +24,16 @@ const userSections: Array<{
 ]
 
 const defaultUserSection: UserSectionKey = 'estudiantes'
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 
 const isUserSectionKey = (value: string | undefined): value is UserSectionKey => userSections.some((section) => section.key === value)
 
-const getUserSectionSummary = (section: UserSectionKey, values: { students: Student[]; teachers: Teacher[] }) => {
+const getUserSectionSummary = (section: UserSectionKey, values: { studentsTotal: number; teachersTotal: number }) => {
   switch (section) {
     case 'estudiantes':
-      return { count: values.students.length, label: 'estudiantes registrados' }
+      return { count: values.studentsTotal, label: 'estudiantes registrados' }
     case 'docentes':
-      return { count: values.teachers.length, label: 'docentes registrados' }
+      return { count: values.teachersTotal, label: 'docentes registrados' }
   }
 }
 
@@ -42,8 +43,18 @@ export function UserManagementPage() {
   const [metadata, setMetadata] = useState<CatalogMetadata | null>(null)
   const [students, setStudents] = useState<Student[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
+  const [studentPage, setStudentPage] = useState(0)
+  const [teacherPage, setTeacherPage] = useState(0)
+  const [studentPageSize, setStudentPageSize] = useState<number>(20)
+  const [teacherPageSize, setTeacherPageSize] = useState<number>(20)
+  const [studentTotalElements, setStudentTotalElements] = useState(0)
+  const [teacherTotalElements, setTeacherTotalElements] = useState(0)
+  const [studentTotalPages, setStudentTotalPages] = useState(0)
+  const [teacherTotalPages, setTeacherTotalPages] = useState(0)
   const [isSavingStudent, setIsSavingStudent] = useState(false)
   const [isSavingTeacher, setIsSavingTeacher] = useState(false)
+  const [isLoadingStudents, setIsLoadingStudents] = useState(true)
+  const [isLoadingTeachers, setIsLoadingTeachers] = useState(true)
   const [editingStudentId, setEditingStudentId] = useState<number | null>(null)
   const [editingTeacherId, setEditingTeacherId] = useState<number | null>(null)
   const [error, setError] = useState('')
@@ -65,7 +76,10 @@ export function UserManagementPage() {
   })
   const activeSection = isUserSectionKey(gestion) ? gestion : defaultUserSection
   const activeSectionConfig = userSections.find((section) => section.key === activeSection) ?? userSections[0]
-  const activeSectionSummary = getUserSectionSummary(activeSection, { students, teachers })
+  const activeSectionSummary = getUserSectionSummary(activeSection, {
+    studentsTotal: studentTotalElements,
+    teachersTotal: teacherTotalElements,
+  })
 
   useEffect(() => {
     if (gestion === activeSection) {
@@ -78,18 +92,12 @@ export function UserManagementPage() {
   useEffect(() => {
     let isMounted = true
 
-    const loadData = async () => {
+    const loadMetadata = async () => {
       try {
-        const [metadataResponse, studentsResponse, teachersResponse] = await Promise.all([
-          apiRequest<CatalogMetadata>('/admin/catalog/metadata'),
-          apiRequest<Student[]>('/admin/students'),
-          apiRequest<Teacher[]>('/admin/teachers'),
-        ])
+        const metadataResponse = await apiRequest<CatalogMetadata>('/admin/catalog/metadata')
 
         if (isMounted) {
           setMetadata(metadataResponse)
-          setStudents(studentsResponse)
-          setTeachers(teachersResponse)
           setStudentForm((current) => hydrateStudentForm(current, metadataResponse))
         }
       } catch (caughtError) {
@@ -99,12 +107,84 @@ export function UserManagementPage() {
       }
     }
 
-    void loadData()
+    void loadMetadata()
 
     return () => {
       isMounted = false
     }
   }, [])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadStudents = async () => {
+      setIsLoadingStudents(true)
+
+      try {
+        const response = await apiRequest<PageResponse<Student>>(
+          `/admin/students/paged${toQueryString({ page: String(studentPage), size: String(studentPageSize) })}`,
+        )
+
+        if (isMounted) {
+          setStudents(response.items)
+          setStudentTotalElements(response.totalElements)
+          setStudentTotalPages(response.totalPages)
+          setStudentPage(response.page)
+          setStudentPageSize(response.size)
+        }
+      } catch (caughtError) {
+        if (isMounted) {
+          setError(caughtError instanceof ApiError ? caughtError.message : 'No fue posible cargar los estudiantes')
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingStudents(false)
+        }
+      }
+    }
+
+    void loadStudents()
+
+    return () => {
+      isMounted = false
+    }
+  }, [studentPage, studentPageSize])
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadTeachers = async () => {
+      setIsLoadingTeachers(true)
+
+      try {
+        const response = await apiRequest<PageResponse<Teacher>>(
+          `/admin/teachers/paged${toQueryString({ page: String(teacherPage), size: String(teacherPageSize) })}`,
+        )
+
+        if (isMounted) {
+          setTeachers(response.items)
+          setTeacherTotalElements(response.totalElements)
+          setTeacherTotalPages(response.totalPages)
+          setTeacherPage(response.page)
+          setTeacherPageSize(response.size)
+        }
+      } catch (caughtError) {
+        if (isMounted) {
+          setError(caughtError instanceof ApiError ? caughtError.message : 'No fue posible cargar los docentes')
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingTeachers(false)
+        }
+      }
+    }
+
+    void loadTeachers()
+
+    return () => {
+      isMounted = false
+    }
+  }, [teacherPage, teacherPageSize])
 
   const hydrateStudentForm = (form: StudentPayload, catalogMetadata: CatalogMetadata) => ({
     ...form,
@@ -149,19 +229,34 @@ export function UserManagementPage() {
     })
   }
 
-  const refreshUserData = async () => {
-    const [metadataResponse, studentsResponse, teachersResponse] = await Promise.all([
-      apiRequest<CatalogMetadata>('/admin/catalog/metadata'),
-      apiRequest<Student[]>('/admin/students'),
-      apiRequest<Teacher[]>('/admin/teachers'),
-    ])
-
+  const refreshMetadata = async () => {
+    const metadataResponse = await apiRequest<CatalogMetadata>('/admin/catalog/metadata')
     setMetadata(metadataResponse)
-    setStudents(studentsResponse)
-    setTeachers(teachersResponse)
     if (editingStudentId === null) {
       setStudentForm((current) => hydrateStudentForm(current, metadataResponse))
     }
+  }
+
+  const refreshStudents = async (nextPage = studentPage, nextSize = studentPageSize) => {
+    const response = await apiRequest<PageResponse<Student>>(
+      `/admin/students/paged${toQueryString({ page: String(nextPage), size: String(nextSize) })}`,
+    )
+    setStudents(response.items)
+    setStudentTotalElements(response.totalElements)
+    setStudentTotalPages(response.totalPages)
+    setStudentPage(response.page)
+    setStudentPageSize(response.size)
+  }
+
+  const refreshTeachers = async (nextPage = teacherPage, nextSize = teacherPageSize) => {
+    const response = await apiRequest<PageResponse<Teacher>>(
+      `/admin/teachers/paged${toQueryString({ page: String(nextPage), size: String(nextSize) })}`,
+    )
+    setTeachers(response.items)
+    setTeacherTotalElements(response.totalElements)
+    setTeacherTotalPages(response.totalPages)
+    setTeacherPage(response.page)
+    setTeacherPageSize(response.size)
   }
 
   const handleStudentInputChange = <K extends keyof StudentPayload>(key: K, value: StudentPayload[K]) => {
@@ -193,7 +288,7 @@ export function UserManagementPage() {
         setSuccess('Estudiante actualizado correctamente.')
       }
 
-      await refreshUserData()
+      await Promise.all([refreshMetadata(), refreshStudents()])
       resetStudentForm()
     } catch (caughtError) {
       setError(caughtError instanceof ApiError ? caughtError.message : 'No fue posible guardar el estudiante')
@@ -223,7 +318,7 @@ export function UserManagementPage() {
         setSuccess('Docente actualizado correctamente.')
       }
 
-      await refreshUserData()
+      await refreshTeachers()
       resetTeacherForm()
     } catch (caughtError) {
       setError(caughtError instanceof ApiError ? caughtError.message : 'No fue posible guardar el docente')
@@ -269,7 +364,8 @@ export function UserManagementPage() {
 
     try {
       await apiRequest(`/admin/students/${student.id}`, { method: 'DELETE' })
-      await refreshUserData()
+      const nextPage = students.length === 1 && studentPage > 0 ? studentPage - 1 : studentPage
+      await Promise.all([refreshMetadata(), refreshStudents(nextPage)])
       if (editingStudentId === student.id) {
         resetStudentForm()
       }
@@ -289,7 +385,8 @@ export function UserManagementPage() {
 
     try {
       await apiRequest(`/admin/teachers/${teacher.id}`, { method: 'DELETE' })
-      await refreshUserData()
+      const nextPage = teachers.length === 1 && teacherPage > 0 ? teacherPage - 1 : teacherPage
+      await refreshTeachers(nextPage)
       if (editingTeacherId === teacher.id) {
         resetTeacherForm()
       }
@@ -306,6 +403,63 @@ export function UserManagementPage() {
 
     navigate(`/app/admin/usuarios/${section}`)
   }
+
+  const renderPagination = (
+    page: number,
+    totalPages: number,
+    totalElements: number,
+    pageSize: number,
+    pageItemsCount: number,
+    isLoading: boolean,
+    onPageChange: (page: number) => void,
+    onPageSizeChange: (size: number) => void,
+    entityLabel: string,
+  ) => (
+    <div className="mt-4 flex flex-col gap-3 rounded-3xl bg-slate-50 px-4 py-4 text-sm text-slate-600 lg:flex-row lg:items-center lg:justify-between">
+      <p>
+        Mostrando <span className="font-semibold text-slate-900">{pageItemsCount}</span> de{' '}
+        <span className="font-semibold text-slate-900">{totalElements}</span> {entityLabel}.
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2">
+          <span>Filas por pagina</span>
+          <select
+            aria-label={`Cantidad de filas por pagina para ${entityLabel}`}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none transition focus:border-brand-magenta focus:ring-4 focus:ring-brand-magenta/10"
+            value={pageSize}
+            onChange={(event) => onPageSizeChange(Number(event.target.value))}
+          >
+            {PAGE_SIZE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="inline-flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onPageChange(Math.max(0, page - 1))}
+            disabled={isLoading || page === 0}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Anterior
+          </button>
+          <span className="min-w-28 text-center font-semibold text-slate-900">
+            Pagina {totalPages ? page + 1 : 0} de {Math.max(totalPages, 1)}
+          </span>
+          <button
+            type="button"
+            onClick={() => onPageChange(totalPages ? Math.min(totalPages - 1, page + 1) : page)}
+            disabled={isLoading || totalPages === 0 || page >= totalPages - 1}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Siguiente
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 
   return (
     <div className="space-y-6">
@@ -484,6 +638,21 @@ export function UserManagementPage() {
             <h2 className="font-heading text-3xl text-slate-950">Estudiantes registrados</h2>
           </div>
 
+          {renderPagination(
+            studentPage,
+            studentTotalPages,
+            studentTotalElements,
+            studentPageSize,
+            students.length,
+            isLoadingStudents,
+            setStudentPage,
+            (size) => {
+              setStudentPage(0)
+              setStudentPageSize(size)
+            },
+            'estudiantes registrados',
+          )}
+
           <div className="mt-6 overflow-hidden rounded-3xl border border-slate-100">
             <table className="min-w-full divide-y divide-slate-100 text-left text-sm">
               <thead className="bg-slate-50 text-slate-500">
@@ -627,6 +796,21 @@ export function UserManagementPage() {
             <Users className="h-5 w-5 text-brand-magenta" />
             <h2 className="font-heading text-3xl text-slate-950">Docentes registrados</h2>
           </div>
+
+          {renderPagination(
+            teacherPage,
+            teacherTotalPages,
+            teacherTotalElements,
+            teacherPageSize,
+            teachers.length,
+            isLoadingTeachers,
+            setTeacherPage,
+            (size) => {
+              setTeacherPage(0)
+              setTeacherPageSize(size)
+            },
+            'docentes registrados',
+          )}
 
           <div className="mt-6 overflow-hidden rounded-3xl border border-slate-100">
             <table className="min-w-full divide-y divide-slate-100 text-left text-sm">

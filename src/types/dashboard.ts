@@ -194,6 +194,16 @@ export type StudentContext = {
   teacherAssignments: TeacherAssignment[]
 }
 
+export type PageResponse<T> = {
+  items: T[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  first: boolean
+  last: boolean
+}
+
 export type SurveySubmissionRecord = {
   id: number
   studentId: number

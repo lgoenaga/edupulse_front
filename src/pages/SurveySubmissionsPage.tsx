@@ -4,6 +4,7 @@ import { ApiError, apiRequest, toQueryString } from '../lib/api'
 import { exportSurveySubmissionsToExcel } from '../lib/export'
 import type {
   CatalogMetadata,
+  PageResponse,
   Student,
   SurveySubmissionDetail,
   SurveySubmissionFilters,
@@ -22,6 +23,8 @@ const initialFilters: SurveySubmissionFilters = {
 const selectBase =
   'rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm font-medium text-slate-700 outline-none transition focus:border-brand-magenta focus:ring-4 focus:ring-brand-magenta/10'
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
+
 export function SurveySubmissionsPage() {
   const [filters, setFilters] = useState<SurveySubmissionFilters>(initialFilters)
   const [metadata, setMetadata] = useState<CatalogMetadata>({
@@ -33,6 +36,10 @@ export function SurveySubmissionsPage() {
   })
   const [students, setStudents] = useState<Student[]>([])
   const [submissions, setSubmissions] = useState<SurveySubmissionRecord[]>([])
+  const [page, setPage] = useState(0)
+  const [pageSize, setPageSize] = useState<number>(20)
+  const [totalElements, setTotalElements] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
   const [selectedSubmission, setSelectedSubmission] = useState<SurveySubmissionDetail | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
@@ -75,11 +82,21 @@ export function SurveySubmissionsPage() {
       setError('')
 
       try {
-        const response = await apiRequest<SurveySubmissionRecord[]>(`/admin/survey-submissions${toQueryString(filters)}`)
+        const response = await apiRequest<PageResponse<SurveySubmissionRecord>>(
+          `/admin/survey-submissions${toQueryString({
+            ...filters,
+            page: String(page),
+            size: String(pageSize),
+          })}`,
+        )
         if (isMounted) {
-          setSubmissions(response)
+          setSubmissions(response.items)
+          setPage(response.page)
+          setPageSize(response.size)
+          setTotalElements(response.totalElements)
+          setTotalPages(response.totalPages)
           setSelectedSubmission((current) =>
-            current && response.some((submission) => submission.id === current.id) ? current : null,
+            current && response.items.some((submission) => submission.id === current.id) ? current : null,
           )
         }
       } catch (caughtError) {
@@ -98,7 +115,7 @@ export function SurveySubmissionsPage() {
     return () => {
       isMounted = false
     }
-  }, [filters])
+  }, [filters, page, pageSize])
 
   const filteredGroupOptions = useMemo(() => {
     if (filters.levelId === 'all') {
@@ -152,6 +169,7 @@ export function SurveySubmissionsPage() {
   }, [filters.periodId, filters.studentId, metadata.periods, students])
 
   const handleFilterChange = (name: keyof SurveySubmissionFilters, value: string) => {
+    setPage(0)
     setFilters((current) => {
       const next = { ...current, [name]: value }
       if (name === 'levelId') {
@@ -167,16 +185,43 @@ export function SurveySubmissionsPage() {
   }
 
   const handleExport = async () => {
-    if (!submissions.length) {
+    if (!totalElements) {
       return
     }
 
     setIsExporting(true)
     try {
-      exportSurveySubmissionsToExcel('edupulse-envios-filtrados.xlsx', submissions)
+      const exportBatchSize = 100
+      const firstPage = await apiRequest<PageResponse<SurveySubmissionRecord>>(
+        `/admin/survey-submissions${toQueryString({
+          ...filters,
+          page: '0',
+          size: String(exportBatchSize),
+        })}`,
+      )
+
+      let allSubmissions = [...firstPage.items]
+
+      for (let pageIndex = 1; pageIndex < firstPage.totalPages; pageIndex += 1) {
+        const nextPage = await apiRequest<PageResponse<SurveySubmissionRecord>>(
+          `/admin/survey-submissions${toQueryString({
+            ...filters,
+            page: String(pageIndex),
+            size: String(exportBatchSize),
+          })}`,
+        )
+        allSubmissions = allSubmissions.concat(nextPage.items)
+      }
+
+      exportSurveySubmissionsToExcel('edupulse-envios-filtrados.xlsx', allSubmissions)
     } finally {
       setIsExporting(false)
     }
+  }
+
+  const handlePageSizeChange = (value: number) => {
+    setPage(0)
+    setPageSize(value)
   }
 
   const handleViewDetail = async (submissionId: number) => {
@@ -211,7 +256,7 @@ export function SurveySubmissionsPage() {
         </div>
         <div className="rounded-3xl border border-white/70 bg-white/85 px-5 py-4 text-right shadow-[0_18px_40px_rgba(102,39,90,0.1)]">
           <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Resumen actual</p>
-          <p className="mt-2 font-heading text-4xl text-slate-950">{submissions.length}</p>
+          <p className="mt-2 font-heading text-4xl text-slate-950">{totalElements}</p>
           <p className="mt-1 text-sm text-slate-600">{summaryLabel}</p>
         </div>
       </header>
@@ -304,7 +349,7 @@ export function SurveySubmissionsPage() {
             <button
               type="button"
               onClick={handleExport}
-              disabled={!submissions.length || isLoading || isExporting}
+              disabled={!totalElements || isLoading || isExporting}
               className="inline-flex items-center gap-2 rounded-2xl border border-white/70 bg-white/90 px-4 py-3 text-sm font-semibold text-slate-900 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <FileSpreadsheet className="h-4 w-4" />
@@ -316,6 +361,51 @@ export function SurveySubmissionsPage() {
                 Cargando...
               </div>
             ) : null}
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3 rounded-3xl bg-slate-50 px-4 py-4 text-sm text-slate-600 lg:flex-row lg:items-center lg:justify-between">
+          <p>
+            Mostrando <span className="font-semibold text-slate-900">{submissions.length}</span> de{' '}
+            <span className="font-semibold text-slate-900">{totalElements}</span> envios filtrados.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-2">
+              <span>Filas por pagina</span>
+              <select
+                aria-label="Cantidad de filas por pagina"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none transition focus:border-brand-magenta focus:ring-4 focus:ring-brand-magenta/10"
+                value={pageSize}
+                onChange={(event) => handlePageSizeChange(Number(event.target.value))}
+              >
+                {PAGE_SIZE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="inline-flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(0, current - 1))}
+                disabled={isLoading || page === 0}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Anterior
+              </button>
+              <span className="min-w-28 text-center font-semibold text-slate-900">
+                Pagina {totalPages ? page + 1 : 0} de {Math.max(totalPages, 1)}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((current) => (totalPages ? Math.min(totalPages - 1, current + 1) : current))}
+                disabled={isLoading || totalPages === 0 || page >= totalPages - 1}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-700 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Siguiente
+              </button>
+            </div>
           </div>
         </div>
 
