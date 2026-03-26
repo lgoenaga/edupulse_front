@@ -188,6 +188,8 @@ export type StudentContext = {
   studentName: string
   groupName: string
   techniqueName: string
+  hasSubmitted: boolean
+  submittedAt: string | null
   questions: StudentQuestion[]
   teacherAssignments: TeacherAssignment[]
 }

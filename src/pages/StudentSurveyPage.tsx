@@ -52,6 +52,17 @@ export function StudentSurveyPage() {
     [context],
   )
 
+  const submittedAtLabel = useMemo(() => {
+    if (!context?.submittedAt) {
+      return null
+    }
+
+    return new Intl.DateTimeFormat('es-CO', {
+      dateStyle: 'long',
+      timeStyle: 'short',
+    }).format(new Date(context.submittedAt))
+  }, [context?.submittedAt])
+
   const updateAnswer = (key: string, score: number) => {
     setAnswers((current) => ({ ...current, [key]: score }))
   }
@@ -83,6 +94,12 @@ export function StudentSurveyPage() {
   const expectedResponseCount = institutionAndTechniqueQuestions.length + (teacherQuestions.length * (context?.teacherAssignments.length ?? 0))
 
   const handleSubmit = async () => {
+    if (context?.hasSubmitted) {
+      setError('La encuesta del periodo vigente ya fue enviada. No es posible registrar una nueva respuesta.')
+      setSuccess('')
+      return
+    }
+
     const responses = buildSubmissionPayload()
     setError('')
     setSuccess('')
@@ -100,8 +117,29 @@ export function StudentSurveyPage() {
         body: { responses },
       })
       setSuccess('La encuesta fue enviada correctamente.')
+      setContext((current) =>
+        current
+          ? {
+              ...current,
+              hasSubmitted: true,
+              submittedAt: new Date().toISOString(),
+            }
+          : current,
+      )
     } catch (caughtError) {
-      setError(caughtError instanceof ApiError ? caughtError.message : 'No fue posible enviar la encuesta')
+      if (caughtError instanceof ApiError && caughtError.status === 409) {
+        setError('La encuesta del periodo vigente ya fue enviada. No es posible registrar una nueva respuesta.')
+        setContext((current) =>
+          current
+            ? {
+                ...current,
+                hasSubmitted: true,
+              }
+            : current,
+        )
+      } else {
+        setError(caughtError instanceof ApiError ? caughtError.message : 'No fue posible enviar la encuesta')
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -153,6 +191,18 @@ export function StudentSurveyPage() {
           ))}
         </div>
       </section>
+
+      {context.hasSubmitted ? (
+        <section className="rounded-4xl border border-emerald-200 bg-emerald-50 p-6 shadow-[0_18px_50px_rgba(16,185,129,0.14)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Encuesta enviada</p>
+          <h2 className="mt-3 font-heading text-3xl text-emerald-950">Tu respuesta ya fue registrada</h2>
+          <p className="mt-3 max-w-3xl text-sm text-emerald-800">
+            Ya enviaste la encuesta del periodo {context.activePeriodName}.
+            {submittedAtLabel ? ` Registro confirmado el ${submittedAtLabel}.` : ''} Solo el rol administrador puede abrir encuestas enviadas.
+          </p>
+        </section>
+      ) : (
+        <>
 
       <section className="space-y-4">
         {institutionAndTechniqueQuestions.map((question) => {
@@ -228,9 +278,6 @@ export function StudentSurveyPage() {
         </section>
       ) : null}
 
-      {error ? <p className="rounded-3xl bg-rose-50 px-4 py-4 text-sm text-rose-700">{error}</p> : null}
-      {success ? <p className="rounded-3xl bg-emerald-50 px-4 py-4 text-sm text-emerald-700">{success}</p> : null}
-
       <div className="flex justify-end">
         <button
           type="button"
@@ -242,6 +289,11 @@ export function StudentSurveyPage() {
           {isSubmitting ? 'Enviando encuesta...' : 'Enviar encuesta'}
         </button>
       </div>
+        </>
+      )}
+
+      {error ? <p className="rounded-3xl bg-rose-50 px-4 py-4 text-sm text-rose-700">{error}</p> : null}
+      {success ? <p className="rounded-3xl bg-emerald-50 px-4 py-4 text-sm text-emerald-700">{success}</p> : null}
     </div>
   )
 }
